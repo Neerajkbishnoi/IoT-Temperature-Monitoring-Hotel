@@ -3,50 +3,49 @@ import json
 import time
 from collections import deque
 
-# MQTT broker settings(configurations)
-BROKER_ADDRESS = "broker.hivemq.com" #you may add the ip address of your preferred MQTT Broker
+# MQTT broker settings
+BROKER_ADDRESS = "broker.hivemq.com"
 BROKER_PORT = 1883
 TOPIC = "hotel/temperature"
 
-# Threshold configurations (celsius, time- 5 minutes in seconds)
-TEMPERATURE_THRESHOLD = 28  
-TIME_THRESHOLD = 5 * 60  
+# Threshold settings-(Temperature - in celsius, Duration- 5 data points each in 1 minute, total duration 5 minutes)
+TEMPERATURE_THRESHOLD = 18  
+DURATION_THRESHOLD = 5  
 
-# Data storage-store last 5 readings
+# Data storage
 temperature_data = []
-recent_readings = deque(maxlen=5)  
+recent_temperatures = deque(maxlen=DURATION_THRESHOLD)
 
 def on_connect(client, userdata, flags, rc):
-    print(f"Connected with result code {rc}")
+    print("Connected with result code "+str(rc))
     client.subscribe(TOPIC)
 
 def on_message(client, userdata, msg):
     payload = json.loads(msg.payload.decode())
-    temperature = payload["temperature"]
-    timestamp = payload["timestamp"]
+    temperature = payload['temperature']
+    timestamp = payload['timestamp']
     
-    # data saved locally
+    # Save data locally
     temperature_data.append(payload)
     
-    # recent readings added
-    recent_readings.append((temperature, timestamp))
+    # Check for threshold 
+    recent_temperatures.append(temperature)
+    if len(recent_temperatures) == DURATION_THRESHOLD and all(t > TEMPERATURE_THRESHOLD for t in recent_temperatures):
+        raise_alarm(temperature)
     
-    # Checking if crossed 5 consecutive readings
-    if len(recent_readings) == 5:
-        if all(temp >= TEMPERATURE_THRESHOLD for temp, _ in recent_readings):
-            if recent_readings[-1][1] - recent_readings[0][1] >= TIME_THRESHOLD:
-                print("ALARM: Temperature threshold crossed for 5 minutes!")
-
     print(f"Received: Temperature: {temperature}°C, Timestamp: {timestamp}")
 
+def raise_alarm(temperature):
+    print(f"ALARM: Temperature has been above {TEMPERATURE_THRESHOLD}°C for {DURATION_THRESHOLD} consecutive readings!")
+    print(f"Current temperature: {temperature}°C")
+
+# Create MQTT client
 client = mqtt.Client()
 client.on_connect = on_connect
 client.on_message = on_message
 
+# Connect to MQTT broker
 client.connect(BROKER_ADDRESS, BROKER_PORT, 60)
 
-try:
-    client.loop_forever()
-except KeyboardInterrupt:
-    print("Subscriber stopped")
-    client.disconnect()
+# Start the loop
+client.loop_forever()
