@@ -1,52 +1,24 @@
-import paho.mqtt.client as mqtt
+from flask import Flask, jsonify
 import json
-import time
-from collections import deque
 
-# MQTT broker settings(configurations)
-BROKER_ADDRESS = "broker.hivemq.com" #you may add the ip address of your preferred MQTT Broker
-BROKER_PORT = 1883
-TOPIC = "hotel/temperature"
+app = Flask(__name__)
 
-# Threshold configurations (celsius, time- 5 minutes in seconds)
-TEMPERATURE_THRESHOLD = 28  
-TIME_THRESHOLD = 5 * 60  
+# Simulating here, but in real-time this would be replaced with a proper database
+def get_last_temperature_reading():
+    try:
+        with open('temperature_data.json', 'r') as f:
+            data = json.load(f)
+            return data[-1] if data else None
+    except FileNotFoundError:
+        return None
 
-# Data storage-store last 5 readings
-temperature_data = []
-recent_readings = deque(maxlen=5)  
+@app.route('/temperature', methods=['GET'])
+def get_temperature():
+    last_reading = get_last_temperature_reading()
+    if last_reading:
+        return jsonify(last_reading), 200
+    else:
+        return jsonify({"error": "No temperature data available"}), 404
 
-def on_connect(client, userdata, flags, rc):
-    print(f"Connected with result code {rc}")
-    client.subscribe(TOPIC)
-
-def on_message(client, userdata, msg):
-    payload = json.loads(msg.payload.decode())
-    temperature = payload["temperature"]
-    timestamp = payload["timestamp"]
-    
-    # data saved locally
-    temperature_data.append(payload)
-    
-    # recent readings added
-    recent_readings.append((temperature, timestamp))
-    
-    # Checking if crossed 5 consecutive readings
-    if len(recent_readings) == 5:
-        if all(temp >= TEMPERATURE_THRESHOLD for temp, _ in recent_readings):
-            if recent_readings[-1][1] - recent_readings[0][1] >= TIME_THRESHOLD:
-                print("ALARM: Temperature threshold crossed for 5 minutes!")
-
-    print(f"Received: Temperature: {temperature}°C, Timestamp: {timestamp}")
-
-client = mqtt.Client()
-client.on_connect = on_connect
-client.on_message = on_message
-
-client.connect(BROKER_ADDRESS, BROKER_PORT, 60)
-
-try:
-    client.loop_forever()
-except KeyboardInterrupt:
-    print("Subscriber stopped")
-    client.disconnect()
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
